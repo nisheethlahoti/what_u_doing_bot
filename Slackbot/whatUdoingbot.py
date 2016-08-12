@@ -1,100 +1,117 @@
-import os
+import inspect
 import time
 import threading
-from slackclient import SlackClient
-from datetime import datetime
 
-# our starterbot's ID
+from datetime import datetime
+from slackclient import SlackClient
+
+# our bot's ID
 BOT_ID = ""  # TODO: Should be the bot's UID
 
-username_list = []  # TODO: Should be list of usernames to work with
-expecting_work_update = [False, False]
 # constants
 AT_BOT = "<@" + BOT_ID + ">:"
-delay_between_message = 5
-EXAMPLE_COMMAND = "record"
 FOLLOWUP_TIME = 30
-login_time = [datetime.now().time(), datetime.now().time()]  # TODO - Properly initiate this list to store datetime equal to size of channel_id
-
 
 # String
-HELLO_JARVIS = "login"
 MORNING_MESSAGE = "Good morning. Let's start creating awesome sound experiences. Have a great day!"
 REQUEST_FOR_UPDATE = "Hey, just checking up. Can you let me know what have you been doing?"
 INVALID_INPUT = "Not sure what you mean. Type help to get possible commands"
-
-# channel constants
-channel_id = []  # TODO: Should be list of channel IDs corresponding to username_list
-channel_id_name = username_list
+LOGIN_REQUIRED = "You have to be logged in to use this command!"
+LOGOUT_REQUIRED = "Can't do this when already logged in!"
 
 # instantiate Slack & Twilio clients
 slack_client = SlackClient("")  # TODO: Should have the slack token
 
 
-def periodic_check():
-    while True:
-        slack_client.api_call("chat.postMessage", channel=username_list[0], text="Kaam karo, timepass nahi :P",
-                              as_user=True)
-        time.sleep(delay_between_message)
-
-
-def find_user(input_channel):
-    count = 0
-    for a in channel_id:
-        if a == input_channel:
-            break
-        else:
-            count += 1
-    return count
-
-
-def send_im(user_id, text):
-    slack_client.api_call("chat.postMessage", channel=channel_id_name[user_id],
-                          text=text, as_user=True)
-
-
-def timely_followup(user_id):
-    global expecting_work_update
-
-    # The hourly check loop
-    if expecting_work_update[user_id]:
-        send_im(user_id, REQUEST_FOR_UPDATE)
-        # TODO - Add for options for break and end of day
-
-    # The user just started working. First login of the day
-    else:
-        expecting_work_update[user_id] = True
-        login_time[user_id] = datetime.now().time()
-        print "Login id of " + channel_id_name[user_id] + " is " + str(login_time[user_id])
-    threading.Timer(FOLLOWUP_TIME, lambda: timely_followup(user_id)).start()
-
-
-def handle_command(command, channel):
-    """
-        Receives commands directed at the bot and determines if they
-        are valid commands. If so, then acts on the commands. If not,
-        returns back what it needs for clarification.
-    """
-    global expecting_work_update
-    user_id = find_user(channel)
-
+class User:
+    # TODO - Add for options for break and end of day
     # TODO - Implement help function
-    if expecting_work_update[user_id]:
-        if command.startswith("update"):
-            print "Work Update from " + username_list[user_id] + " is " + command  # TODO - Save the time, user_id, and work update in a database, not just print on terminal
-        # expecting_work_update[user_id] = False
+    def __init__(self, id, name):
+        self.id = id
+        self.name = name
+        self._logged_in = False
+        self._login_time = datetime()
+        self._timer = None
 
+    def _post_message(self, message):
+        slack_client.api_call("chat.postMessage", channel=self.id,
+                              text=message, as_user=True)
 
-    else:
-        if command == HELLO_JARVIS:
-            response = MORNING_MESSAGE
-            slack_client.api_call("chat.postMessage", channel=channel,
-                                  text=response, as_user=True)
-            timely_followup(user_id)
+    def _assert_login_status(desired):
+        def with_fn(func):
+            def with_args(self, *args):
+                if self._logged_in == desired:
+                    func(self, *args)
+                else:
+                    self._post_message(LOGIN_REQUIRED if desired else LOGOUT_REQUIRED)
+            with_args.func_dict = func.func_dict
+            return with_args
+        return with_fn
+
+    def _command(func):
+        def one_argument_fn(self, x):
+            if x:
+                self.post_message("This command does not take arguments")
+            else:
+                func(self)
+        if inspect.getargspec(func).args.len() == 1:
+            func = one_argument_fn
+        func.func_dict['command'] = True
+        return func
+
+    def _timely_followup(self):
+        self._post_message(REQUEST_FOR_UPDATE)
+        self._timer = threading.Timer(FOLLOWUP_TIME, self._timely_followup)
+        self._timer.start()
+
+    @_command
+    @_assert_login_status(False)
+    def login(self):
+        self._logged_in = True
+        self._post_message(MORNING_MESSAGE)
+        self._login_time = datetime.now()
+        self._timer = threading.Timer(FOLLOWUP_TIME, self._timely_followup)
+        self._timer.start()
+        print "Login time of " + self.name + " is " + str(self._login_time)
+
+    @_command
+    @_assert_login_status(True)
+    def update(self, content):
+        print "Work Update from " + self.name + " is:" + content
+
+    @_command
+    @_assert_login_status(True)
+    def logout(self):
+        logout_time = datetime.now()
+        print "Logout time of " + self.name + " is " + str(logout_time)
+        self._logged_in = False
+        if self.timer:
+            self.timer.cancel()
+
+    def handle_command(self, user_input):
+        """
+            Receives commands directed at the bot and determines if they
+            are valid commands. If so, then acts on the commands. If not,
+            returns back what it needs for clarification.
+        """
+        tokens = user_input.split(None, 1)
+        if not tokens:
+            self.post_message("Don't know what to do with empty command :(")
         else:
-            response = INVALID_INPUT
-            slack_client.api_call("chat.postMessage", channel=channel,
-                                  text=response, as_user=True)
+            func = getattr(self, tokens[0], None)
+            if callable(func) and func.func_dict['command']:
+                func(*tokens[1:])
+            else:
+                self.post_message(INVALID_INPUT)
+
+
+users = {User("<uid>", "@<username>"),
+         User("<uid>", "@<username>"),
+         User("<uid>", "@<username>")}  # TODO: Should be actual uids and usernames
+
+
+def find_user(user_id):
+    return next(x for x in users if x.id == user_id)
 
 
 def parse_slack_output(slack_rtm_output):
@@ -113,16 +130,13 @@ def parse_slack_output(slack_rtm_output):
     return None, None
 
 
-# TODO - Now that we have the login time, we need to code the bot to ask the user for what he/she has done say 1 minute every login time. How do we keep a count of time? (python asynch future programming)
 if __name__ == "__main__":
-    READ_WEBSOCKET_DELAY = 1  # 1 second delay between reading from firehose
     if slack_client.rtm_connect():
         print("StarterBot connected and running!")
-        # periodic_check()
         while True:
             command, channel = parse_slack_output(slack_client.rtm_read())
             if command and channel:
-                handle_command(command, channel)
-            time.sleep(READ_WEBSOCKET_DELAY)
+                find_user(channel).handle_command(command)
+            time.sleep(1)  # 1 second delay between reading from firehose
     else:
         print("Connection failed. Invalid Slack token or bot ID?")
