@@ -28,9 +28,9 @@ slack_client = SlackClient("")  # TODO: Should have the slack token
 class User:
     # TODO - Add for options for break and end of day
     # TODO - Implement help function
-    def __init__(self, user_data):
-        self.id = user_data['id']
-        self.name = user_data['name']
+    def __init__(self, data):
+        self.id = data['id']
+        self.name = data['name']
         self._logged_in = False
         self._timer_start_time = None
         self._timer = None
@@ -126,12 +126,12 @@ class User:
         """
         tokens = user_input.split(None, 1)
         if tokens:
-            func = getattr(self, tokens[0].lower(), None)
-            if callable(func) and func.__dict__['command']:
-                with self._lock:
+            with self._lock:
+                func = getattr(self, tokens[0].lower(), None)
+                if callable(func) and func.__dict__['command']:
                     func(*tokens[1:])
-            else:
-                self._post_message(INVALID_INPUT)
+                else:
+                    self._post_message(INVALID_INPUT)
 
 
 def parse_slack_output(output_list):
