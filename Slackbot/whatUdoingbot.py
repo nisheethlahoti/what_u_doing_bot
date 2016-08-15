@@ -1,7 +1,7 @@
 import inspect
 import time
-import threading
 
+from threading import Timer
 from datetime import datetime
 from slackclient import SlackClient
 
@@ -9,15 +9,17 @@ from slackclient import SlackClient
 BOT_ID = ""  # TODO: Should be the bot's UID
 
 # constants
-FOLLOWUP_TIME = 30
+FOLLOWUP_TIME = 3
 
 # String
 MORNING_MESSAGE = "Good morning. Let's start creating awesome sound experiences. Have a great day!"
 REQUEST_FOR_UPDATE = "Hey, just checking up. Can you let me know what have you been doing?"
 INVALID_INPUT = "Not sure what you mean. Type help to get possible commands"
-LOGIN_REQUIRED = "You have to be logged in to use this command!"
+LOGIN_REQUIRED = "You have to be logged in to use this command."
 LOGOUT_REQUIRED = "Can't do this when already logged in!"
 NO_ACCEPT_ARGUMENTS = "Don't understand this command if followed by further text :/"
+ALREADY_PAUSED = "You're already on a pause."
+NOT_PAUSED = "You can't resume when you aren't paused in the first place!"
 
 # instantiate Slack & Twilio clients
 slack_client = SlackClient("")  # TODO: Should have the slack token
@@ -30,8 +32,9 @@ class User:
         self.id = user_data['id']
         self.name = user_data['name']
         self._logged_in = False
-        self._login_time = None
+        self._timer_start_time = None
         self._timer = None
+        self._pause_time = None  # Should be None when not paused
 
     def _post_message(self, message):
         slack_client.api_call("chat.postMessage", channel=self.id,
@@ -62,8 +65,10 @@ class User:
         return one_argument_fn
 
     def _timely_followup(self):
-        self._post_message(REQUEST_FOR_UPDATE)
-        self._timer = threading.Timer(FOLLOWUP_TIME, self._timely_followup)
+        if self._timer is not None:  # It will be None only during first call at login
+            self._post_message(REQUEST_FOR_UPDATE)
+        self._timer_start_time = datetime.now()
+        self._timer = Timer(FOLLOWUP_TIME, self._timely_followup)
         self._timer.start()
 
     @_assert_login_status(False)
@@ -71,10 +76,8 @@ class User:
     def login(self):
         self._logged_in = True
         self._post_message(MORNING_MESSAGE)
-        self._login_time = datetime.now()
-        self._timer = threading.Timer(FOLLOWUP_TIME, self._timely_followup)
-        self._timer.start()
-        print("Login time of " + self.name + " is " + str(self._login_time))
+        self._timely_followup()
+        print("Login time of " + self.name + " is " + str(datetime.now()))
 
     @_assert_login_status(True)
     @_command
@@ -83,9 +86,31 @@ class User:
 
     @_assert_login_status(True)
     @_command
+    def pause(self):
+        if self._pause_time is not None:
+            self._post_message(ALREADY_PAUSED)
+        else:
+            self._pause_time = datetime.now()
+            self._timer.cancel()
+            print(self.name + " has paused work at " + str(self._pause_time))
+
+    @_assert_login_status(True)
+    @_command
+    def resume(self):
+        if self._pause_time is None:
+            self._post_message(NOT_PAUSED)
+        else:
+            timer_done = (self._pause_time-self._timer_start_time).total_seconds()
+            self._timer = Timer(FOLLOWUP_TIME-timer_done, self._timely_followup)
+            self._timer_start_time = datetime.now()
+            self._pause_time = None
+            print(self.name + " has resumed work at " + str(self._timer_start_time))
+            self._timer.start()
+
+    @_assert_login_status(True)
+    @_command
     def logout(self):
-        logout_time = datetime.now()
-        print("Logout time of " + self.name + " is " + str(logout_time))
+        print("Logout time of " + self.name + " is " + str(datetime.now()))
         self._logged_in = False
         if self._timer:
             self._timer.cancel()
