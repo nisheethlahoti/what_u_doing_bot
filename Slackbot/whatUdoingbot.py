@@ -1,9 +1,9 @@
 import inspect
 import time
 
-from threading import Timer
 from datetime import datetime
 from slackclient import SlackClient
+from threading import Lock, Timer
 
 # our bot's ID
 BOT_ID = ""  # TODO: Should be the bot's UID
@@ -35,6 +35,7 @@ class User:
         self._timer_start_time = None
         self._timer = None
         self._pause_time = None  # Should be None when not paused
+        self._lock = Lock()
 
     def _post_message(self, message):
         slack_client.api_call("chat.postMessage", channel=self.id,
@@ -65,19 +66,21 @@ class User:
         return one_argument_fn
 
     def _timely_followup(self):
-        if self._timer is not None:  # It will be None only during first call at login
-            self._post_message(REQUEST_FOR_UPDATE)
-        self._timer_start_time = datetime.now()
-        self._timer = Timer(FOLLOWUP_TIME, self._timely_followup)
-        self._timer.start()
+        with self._lock:
+            if self._pause_time is None:  # Just in case the lock was acquired just after pause
+                if self._timer is not None:  # It will be None only during first call at login
+                    self._post_message(REQUEST_FOR_UPDATE)
+                self._timer_start_time = datetime.now()
+                self._timer = Timer(FOLLOWUP_TIME, self._timely_followup)
+                self._timer.start()
 
     @_assert_login_status(False)
     @_command
     def login(self):
         self._logged_in = True
         self._post_message(MORNING_MESSAGE)
-        self._timely_followup()
         print("Login time of " + self.name + " is " + str(datetime.now()))
+        Timer(0, self._timely_followup).start()
 
     @_assert_login_status(True)
     @_command
@@ -125,7 +128,8 @@ class User:
         if tokens:
             func = getattr(self, tokens[0].lower(), None)
             if callable(func) and func.__dict__['command']:
-                func(*tokens[1:])
+                with self._lock:
+                    func(*tokens[1:])
             else:
                 self._post_message(INVALID_INPUT)
 
