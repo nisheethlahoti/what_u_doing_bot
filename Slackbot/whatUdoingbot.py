@@ -9,7 +9,6 @@ from slackclient import SlackClient
 BOT_ID = ""  # TODO: Should be the bot's UID
 
 # constants
-AT_BOT = "<@" + BOT_ID + ">:"
 FOLLOWUP_TIME = 30
 
 # String
@@ -27,9 +26,9 @@ slack_client = SlackClient("")  # TODO: Should have the slack token
 class User:
     # TODO - Add for options for break and end of day
     # TODO - Implement help function
-    def __init__(self, user_id, name):
-        self.id = user_id
-        self.name = name
+    def __init__(self, user_data):
+        self.id = user_data['id']
+        self.name = user_data['name']
         self._logged_in = False
         self._login_time = None
         self._timer = None
@@ -98,44 +97,38 @@ class User:
             returns back what it needs for clarification.
         """
         tokens = user_input.split(None, 1)
-        if not tokens:
-            self._post_message("Don't know what to do with empty command :(")
-        else:
-            func = getattr(self, tokens[0], None)
+        if tokens:
+            func = getattr(self, tokens[0].lower(), None)
             if callable(func) and func.__dict__['command']:
                 func(*tokens[1:])
             else:
                 self._post_message(INVALID_INPUT)
 
 
-users = {User("<uid>", "@<username>"),
-         User("<uid>", "@<username>"),
-         User("<uid>", "@<username>")}  # TODO: Should be actual uids and usernames
-
-
-def find_user(user_id):
-    return next(x for x in users if x.id == user_id)
-
-
-def parse_slack_output(slack_rtm_output):
-    output_list = slack_rtm_output
+def parse_slack_output(output_list):
+    """
+    Parses slack output to extract all messages not sent by the bot itself
+    :param output_list: A list of json objects for slack messages
+    :return: The ID of the user sending the message, and the text of the message
+    """
     if output_list and len(output_list) > 0:
         for output in output_list:
-            if output and 'text' in output and AT_BOT in output['text']:
-                # return text after the @ mention, whitespace removed
-                return output['text'].split(AT_BOT)[1].strip().lower(), \
-                       output['channel']
+            if output and 'text' in output and 'user' in output and output['user'] != BOT_ID:
+                return output['user'], output['text']
     return None, None
 
 
 if __name__ == "__main__":
+    users = {}
+    for user_data in slack_client.api_call("users.list")['members']:
+        users[user_data['id']] = User(user_data)
+
     if slack_client.rtm_connect():
         print("StarterBot connected and running!")
         while True:
-            command, channel = parse_slack_output(slack_client.rtm_read())
-            if command and channel:
-                print("Received message at " + channel)
-                find_user(channel).handle_command(command)
+            uid, command = parse_slack_output(slack_client.rtm_read())
+            if uid in users:
+                users[uid].handle_command(command)
             time.sleep(1)  # 1 second delay between reading from firehose
     else:
         print("Connection failed. Invalid Slack token or bot ID?")
