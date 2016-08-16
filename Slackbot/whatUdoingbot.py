@@ -2,6 +2,7 @@ import inspect
 import time
 
 from datetime import datetime
+from enum import Enum
 from slackclient import SlackClient
 from threading import Lock, Timer
 
@@ -15,14 +16,22 @@ FOLLOWUP_TIME = 3
 MORNING_MESSAGE = "Good morning. Let's start creating awesome sound experiences. Have a great day!"
 REQUEST_FOR_UPDATE = "Hey, just checking up. Can you let me know what have you been doing?"
 INVALID_INPUT = "Not sure what you mean. Type help to get possible commands"
-LOGIN_REQUIRED = "You have to be logged in to use this command."
-LOGOUT_REQUIRED = "Can't do this when already logged in!"
 NO_ACCEPT_ARGUMENTS = "Don't understand this command if followed by further text :/"
-ALREADY_PAUSED = "You're already on a pause."
-NOT_PAUSED = "You can't resume when you aren't paused in the first place!"
 
 # instantiate Slack & Twilio clients
 slack_client = SlackClient("")  # TODO: Should have the slack token
+
+
+class Status(Enum):
+    active = 0
+    paused = 1
+    logged_out = 2
+
+mismatch_message = {
+    Status.active: "Can't do this when you're already active!",
+    Status.paused: "Can't do this while on a pause.",
+    Status.logged_out: "Can't do this while logged out."
+}
 
 
 class User:
@@ -31,23 +40,23 @@ class User:
     def __init__(self, data):
         self.id = data['id']
         self.name = data['name']
-        self._logged_in = False
+        self._status = Status.logged_out
         self._timer_start_time = None
         self._timer = None
-        self._pause_time = None  # Should be None when not paused
+        self._pause_time = None
         self._lock = Lock()
 
     def _post_message(self, message):
         slack_client.api_call("chat.postMessage", channel=self.id,
                               text=message, as_user=True)
 
-    def _assert_login_status(desired):
+    def _allowed_status(*statuses):
         def with_fn(func):
             def with_args(self, *args):
-                if self._logged_in == desired:
+                if self._status in statuses:
                     func(self, *args)
                 else:
-                    self._post_message(LOGIN_REQUIRED if desired else LOGOUT_REQUIRED)
+                    self._post_message(mismatch_message[self._status])
             with_args.__dict__ = func.__dict__
             return with_args
         return with_fn
@@ -67,54 +76,49 @@ class User:
 
     def _timely_followup(self):
         with self._lock:
-            if self._pause_time is None:  # Just in case the lock was acquired just after pause
+            if self._status == Status.active:  # Just in case the lock's acquired just after pause
                 if self._timer is not None:  # It will be None only during first call at login
                     self._post_message(REQUEST_FOR_UPDATE)
                 self._timer_start_time = datetime.now()
                 self._timer = Timer(FOLLOWUP_TIME, self._timely_followup)
                 self._timer.start()
 
-    @_assert_login_status(False)
+    @_allowed_status(Status.logged_out)
     @_command
     def login(self):
-        self._logged_in = True
+        self._status = Status.active
         self._post_message(MORNING_MESSAGE)
         print("Login time of " + self.name + " is " + str(datetime.now()))
         Timer(0, self._timely_followup).start()
 
-    @_assert_login_status(True)
+    @_allowed_status(Status.active)
     @_command
     def update(self, content):
         print("Work Update from " + self.name + " is:" + content)
 
-    @_assert_login_status(True)
+    @_allowed_status(Status.active)
     @_command
     def pause(self):
-        if self._pause_time is not None:
-            self._post_message(ALREADY_PAUSED)
-        else:
-            self._pause_time = datetime.now()
-            self._timer.cancel()
-            print(self.name + " has paused work at " + str(self._pause_time))
+        self._status = Status.paused
+        self._pause_time = datetime.now()
+        self._timer.cancel()
+        print(self.name + " has paused work at " + str(self._pause_time))
 
-    @_assert_login_status(True)
+    @_allowed_status(Status.paused)
     @_command
     def resume(self):
-        if self._pause_time is None:
-            self._post_message(NOT_PAUSED)
-        else:
-            timer_done = (self._pause_time-self._timer_start_time).total_seconds()
-            self._timer = Timer(FOLLOWUP_TIME-timer_done, self._timely_followup)
-            self._timer_start_time = datetime.now()
-            self._pause_time = None
-            print(self.name + " has resumed work at " + str(self._timer_start_time))
-            self._timer.start()
+        self._status = Status.active
+        timer_done = (self._pause_time-self._timer_start_time).total_seconds()
+        self._timer = Timer(FOLLOWUP_TIME-timer_done, self._timely_followup)
+        self._timer_start_time = datetime.now()
+        print(self.name + " has resumed work at " + str(self._timer_start_time))
+        self._timer.start()
 
-    @_assert_login_status(True)
+    @_allowed_status(Status.active, Status.paused)
     @_command
     def logout(self):
         print("Logout time of " + self.name + " is " + str(datetime.now()))
-        self._logged_in = False
+        self._status = Status.logged_out
         if self._timer:
             self._timer.cancel()
 
