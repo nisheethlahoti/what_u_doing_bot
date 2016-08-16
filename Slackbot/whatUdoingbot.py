@@ -46,6 +46,9 @@ class User:
         self._pause_time = None
         self._lock = Lock()
 
+    def _log(self, message):
+        print(message)
+
     def _post_message(self, message):
         slack_client.api_call("chat.postMessage", channel=self.id,
                               text=message, as_user=True)
@@ -88,13 +91,13 @@ class User:
     def login(self):
         self._status = Status.active
         self._post_message(MORNING_MESSAGE)
-        print("Login time of " + self.name + " is " + str(datetime.now()))
+        self._log("Login time of " + self.name + " is " + str(datetime.now()))
         Timer(0, self._timely_followup).start()
 
     @_allowed_status(Status.active)
     @_command
     def update(self, content):
-        print("Work Update from " + self.name + " is:" + content)
+        self._log("Work Update from " + self.name + " is:" + content)
 
     @_allowed_status(Status.active)
     @_command
@@ -102,7 +105,7 @@ class User:
         self._status = Status.paused
         self._pause_time = datetime.now()
         self._timer.cancel()
-        print(self.name + " has paused work at " + str(self._pause_time))
+        self._log(self.name + " has paused work at " + str(self._pause_time))
 
     @_allowed_status(Status.paused)
     @_command
@@ -111,13 +114,13 @@ class User:
         timer_done = (self._pause_time-self._timer_start_time).total_seconds()
         self._timer = Timer(FOLLOWUP_TIME-timer_done, self._timely_followup)
         self._timer_start_time = datetime.now()
-        print(self.name + " has resumed work at " + str(self._timer_start_time))
+        self._log(self.name + " has resumed work at " + str(self._timer_start_time))
         self._timer.start()
 
     @_allowed_status(Status.active, Status.paused)
     @_command
     def logout(self):
-        print("Logout time of " + self.name + " is " + str(datetime.now()))
+        self._log("Logout time of " + self.name + " is " + str(datetime.now()))
         self._status = Status.logged_out
         if self._timer:
             self._timer.cancel()
