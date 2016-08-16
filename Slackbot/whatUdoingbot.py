@@ -1,4 +1,5 @@
 import inspect
+import io
 import time
 
 from datetime import datetime
@@ -45,9 +46,11 @@ class User:
         self._timer = None
         self._pause_time = None
         self._lock = Lock()
+        self._log_file = None
 
     def _log(self, message):
-        print(message)
+        self._log_file.write(message + '\n')
+        self._log_file.flush()
 
     def _post_message(self, message):
         slack_client.api_call("chat.postMessage", channel=self.id,
@@ -89,6 +92,7 @@ class User:
     @_allowed_status(Status.logged_out)
     @_command
     def login(self):
+        self._log_file = open(self.name + ".log", 'a')
         self._status = Status.active
         self._post_message(MORNING_MESSAGE)
         self._log("Login time of " + self.name + " is " + str(datetime.now()))
@@ -97,7 +101,7 @@ class User:
     @_allowed_status(Status.active)
     @_command
     def update(self, content):
-        self._log("Work Update from " + self.name + " is:" + content)
+        self._log("Work Update from " + self.name + " is:" + content.replace("\n", "\n\t"))
 
     @_allowed_status(Status.active)
     @_command
@@ -122,6 +126,7 @@ class User:
     def logout(self):
         self._log("Logout time of " + self.name + " is " + str(datetime.now()))
         self._status = Status.logged_out
+        self._log_file.close()
         if self._timer:
             self._timer.cancel()
 
