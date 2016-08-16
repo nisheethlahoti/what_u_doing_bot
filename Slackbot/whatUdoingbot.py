@@ -1,5 +1,4 @@
 import inspect
-import io
 import time
 
 from datetime import datetime
@@ -11,7 +10,7 @@ from threading import Lock, Timer
 BOT_ID = ""  # TODO: Should be the bot's UID
 
 # constants
-FOLLOWUP_TIME = 3
+FOLLOWUP_TIME = 3600
 
 # String
 MORNING_MESSAGE = "Good morning. Let's start creating awesome sound experiences. Have a great day!"
@@ -83,7 +82,7 @@ class User:
     def _timely_followup(self):
         with self._lock:
             if self._status == Status.active:  # Just in case the lock's acquired just after pause
-                if self._timer is not None:  # It will be None only during first call at login
+                if self._timer is not None:  # It will be None only during reset calls
                     self._post_message(REQUEST_FOR_UPDATE)
                 self._timer_start_time = datetime.now()
                 self._timer = Timer(FOLLOWUP_TIME, self._timely_followup)
@@ -92,7 +91,7 @@ class User:
     @_allowed_status(Status.logged_out)
     @_command
     def login(self):
-        self._log_file = open(self.name + ".log", 'a')
+        self._log_file = open("logs/" + self.name + ".log", 'a')
         self._status = Status.active
         self._post_message(MORNING_MESSAGE)
         self._log("Login time of " + self.name + " is " + str(datetime.now()))
@@ -102,6 +101,9 @@ class User:
     @_command
     def update(self, content):
         self._log("Work Update from " + self.name + " is:" + content.replace("\n", "\n\t"))
+        self._timer.cancel()
+        self._timer = None
+        Timer(0, self._timely_followup).start()
 
     @_allowed_status(Status.active)
     @_command
