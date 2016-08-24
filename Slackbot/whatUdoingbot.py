@@ -91,7 +91,7 @@ class User:
     @_allowed_status(Status.logged_out)
     @_command
     def login(self):
-        self._log_file = open("logs/" + self.name + ".log", 'a')
+        self._log_file = open("logs/" + self.name + ".log", 'a', encoding="UTF-8")
         self._status = Status.active
         self._post_message(MORNING_MESSAGE)
         self._log("Login time of " + self.name + " is " + str(datetime.now()))
