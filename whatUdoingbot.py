@@ -5,6 +5,7 @@ from datetime import datetime
 from enum import Enum
 from slackclient import SlackClient
 from threading import Lock, Timer
+from websocket import WebSocketConnectionClosedException
 
 # our bot's ID
 BOT_ID = ""  # TODO: Should be the bot's UID
@@ -161,17 +162,27 @@ def parse_slack_output(output_list):
     return None, None
 
 
+def try_slack_connect(delay):
+    """
+    Keeps trying to connect to slack, with given delay between retries.
+    """
+    while not slack_client.rtm_connect():
+        print("Unable to connect. Retrying...")
+        time.sleep(delay)
+    print("StarterBot connected and running!")
+
 if __name__ == "__main__":
     users = {}
     for user_data in slack_client.api_call("users.list")['members']:
         users[user_data['id']] = User(user_data)
 
-    if slack_client.rtm_connect():
-        print("StarterBot connected and running!")
-        while True:
+    try_slack_connect(1)
+    while True:
+        try:
             uid, command = parse_slack_output(slack_client.rtm_read())
             if uid in users:
                 users[uid].handle_command(command)
             time.sleep(1)  # 1 second delay between reading from firehose
-    else:
-        print("Connection failed. Invalid Slack token or bot ID?")
+        except WebSocketConnectionClosedException:
+            print("Connection to Slack closed. Reconnecting...")
+            try_slack_connect(1)
