@@ -132,7 +132,7 @@ class User:
             elif num_params:
                 func(self, "")
 
-        one_argument_fn.__dict__['command'] = True
+        one_argument_fn.is_command = None   # is_command should only be present for commands
         return one_argument_fn
 
     def _initiate_followup(self, elapsed_time=timedelta()):
@@ -234,7 +234,7 @@ class User:
         if tokens:
             with self._lock:
                 func = getattr(self, tokens[0].lower(), None)
-                if callable(func) and func.__dict__['command']:
+                if callable(func) and hasattr(func, 'is_command'):
                     func(*tokens[1:])
                 else:
                     self._slack_message(INVALID_INPUT)
