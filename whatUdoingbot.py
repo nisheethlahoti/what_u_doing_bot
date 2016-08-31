@@ -1,4 +1,7 @@
 import inspect
+import pickle
+import signal
+import sys
 import time
 
 from argparse import ArgumentParser
@@ -16,6 +19,7 @@ args = parser.parse_args()
 # Globals
 BOT_ID = args.bot_id
 FOLLOWUP_TIME = 3600    # Time (in seconds) to wait before follow-up
+STATUS_FILE = "status.bin"  # Contains the statuses of current users when bot reboots
 users = {}              # Map of user id's to User objects
 slack_client = SlackClient(args.slack_token)
 
@@ -43,7 +47,6 @@ mismatch_message = {
 
 
 class User:
-    # TODO - Add for options for break and end of day
     # TODO - Implement help function
     def __init__(self, data):
         self.id = data['id']
@@ -197,9 +200,29 @@ def try_slack_connect(delay):
     print("StarterBot connected and running!")
 
 
+def save_and_quit(signal, frame):
+    # TODO - Find out why SIGINT is required twice
+    pickle.dump(users, open(STATUS_FILE, "wb"), pickle.HIGHEST_PROTOCOL)
+    sys.exit()
+
+
+def load_users():
+    global users
+    try:
+        status_file = open(STATUS_FILE, "rb")
+        users = pickle.load(status_file)
+        status_file.close()
+        print("Restored state information of users")
+    except (FileNotFoundError, IOError, EOFError):
+        users = {}
+        for user_data in slack_client.api_call("users.list")['members']:
+            users[user_data['id']] = User(user_data)
+        print("Reset all user data")
+
+
 if __name__ == "__main__":
-    for user_data in slack_client.api_call("users.list")['members']:
-        users[user_data['id']] = User(user_data)
+    load_users()
+    signal.signal(signal.SIGINT, save_and_quit)
 
     try_slack_connect(1)
     while True:
