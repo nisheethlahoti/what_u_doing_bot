@@ -2,7 +2,7 @@ import inspect
 import time
 
 from argparse import ArgumentParser
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from slackclient import SlackClient
 from threading import Lock, Timer
@@ -88,7 +88,9 @@ class User:
         return one_argument_fn
 
     def _initiate_followup(self, elapsed_time=0):
-        self._timer_start_time = datetime.now()
+        # timer_start_time denotes the *apparent* start time: FOLLOWUP_TIME seconds before whenever
+        # the timer is actually supposed to fire
+        self._timer_start_time = datetime.now() - timedelta(seconds=elapsed_time)
         self._timer = Timer(FOLLOWUP_TIME-elapsed_time, self._timely_followup)
         self._timer.start()
 
