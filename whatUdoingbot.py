@@ -1,3 +1,4 @@
+import functools
 import inspect
 import pickle
 import signal
@@ -19,9 +20,9 @@ args = parser.parse_args()
 
 # Globals
 BOT_ID = args.bot_id
-FOLLOWUP_TIME = timedelta(hours=1)  # Time to wait before follow-up
-STATUS_FILE = "status.bin"  # Contains the statuses of current users when bot reboots
-users = {}              # Map of user id's to User objects
+FOLLOWUP_TIME = timedelta(hours=1)      # Time to wait before follow-up
+STATUS_FILE = "status.bin"              # Contains the statuses of current users when bot reboots
+users = {}                              # Map of user id's to User objects
 slack_client = SlackClient(args.slack_token)
 ADMINS = set(args.admins)
 
@@ -36,27 +37,28 @@ RESUME_MESSAGE = "Hello again!"
 LOGOUT_MESSAGE = "Bye bye!"
 
 HELP_MESSAGE = u"I'm _what_u_doing_, a bot to help you log your hourly tasks." \
-    " Here are the commands that I understand for now:\n\n" \
-    "*login* - Type this when you start your work day\n\n" \
-    "*pause* - Want to take a break?" \
-    " Type pause to ensure that the bot doesn't keep pestering you.\n\n" \
-    "*resume* - Type this when you again start working after a pause." \
-    " You should do this immediately after your break is over.\n\n" \
-    "*update* - This is the main command. Whenever you want to share an update," \
-    " write `update xyz`, where xyz is the work that you did since the last update.\n\n" \
-    "*logout* - Done for the day? Just type logout to tell the bot!\n\n" \
-    "For any queries or suggestions, reach out to what_u_doing_bot@soundrex.com ASAP."
+               " Here are the commands that I understand for now:\n\n" \
+               "*login* - Type this when you start your work day\n\n" \
+               "*pause* - Want to take a break?" \
+               " Type pause to ensure that the bot doesn't keep pestering you.\n\n" \
+               "*resume* - Type this when you again start working after a pause." \
+               " You should do this immediately after your break is over.\n\n" \
+               "*update* - This is the main command. Whenever you want to share an update," \
+               " write `update xyz`, where xyz is the work you did since the last update.\n\n" \
+               "*logout* - Done for the day? Just type logout to tell the bot!\n\n" \
+               "For any queries or suggestions, reach out to what_u_doing_bot@soundrex.com ASAP."
 
 STATS_MESSAGE = u"Your Work Update for %date:\n\n" \
-    "Today you worked for %time_worked. Here's what you did in that time:\n" \
-    "%tasks\n\n" \
-    "Cheers!"
+                "Today you worked for %time_worked. Here's what you did in that time:\n" \
+                "%tasks\n\n" \
+                "Cheers!"
 
 
 class Status(Enum):
     active = 0
     paused = 1
     logged_out = 2
+
 
 mismatch_message = {
     Status.active: "Can't do this when you're already active!",
@@ -91,56 +93,72 @@ class User:
         if self._status is not Status.logged_out:
             self._log_file = open(self._log_file_path, 'a', encoding="UTF-8")
             if self._status is Status.active:
-                self._initiate_followup(datetime.now()-self._timer_start_time)
+                self._initiate_followup(datetime.now() - self._timer_start_time)
 
     def _log(self, message):
         self._log_file.write(str(datetime.now())[:-7] + ": " + message + '\n')
         self._log_file.flush()
 
-    def _post_message(self, message):
+    def _slack_message(self, message):
         slack_client.api_call("chat.postMessage", channel=self.id, text=message, as_user=True)
 
     def _allowed_status(*statuses):
+        """
+        Decorator that only lets the function execute if the current status in the list provided.
+        """
         def with_fn(func):
+            @functools.wraps(func)
             def with_args(self, *args):
                 if self._status in statuses:
                     func(self, *args)
                 else:
-                    self._post_message(mismatch_message[self._status])
-            with_args.__dict__ = func.__dict__
+                    self._slack_message(mismatch_message[self._status])
             return with_args
+
         return with_fn
 
     def _command(func):
-        num_params = len(inspect.signature(func).parameters)-1
+        """
+        Decorator to mark a method as callable by the end user
+        """
+        num_params = len(inspect.signature(func).parameters) - 1
 
+        @functools.wraps(func)
         def one_argument_fn(self, *args):  # args and num_params can both only be 0 or 1
             if len(args) == num_params:
                 func(self, *args)
             elif args:
-                self._post_message(NO_ACCEPT_ARGUMENTS)
+                self._slack_message(NO_ACCEPT_ARGUMENTS)
             elif num_params:
                 func(self, "")
+
         one_argument_fn.__dict__['command'] = True
         return one_argument_fn
 
     def _initiate_followup(self, elapsed_time=timedelta()):
+        """
+        Start the countdown timer for the next timely followup.
+        :param elapsed_time: Time for which the timer has already run. Defaults to zero.
+        """
         # timer_start_time denotes the *apparent* start time: FOLLOWUP_TIME before whenever
         # the timer is actually supposed to fire
         self._timer_start_time = datetime.now() - elapsed_time
-        self._timer = Timer((FOLLOWUP_TIME-elapsed_time).total_seconds(), self._timely_followup)
+        self._timer = Timer((FOLLOWUP_TIME - elapsed_time).total_seconds(), self._timely_followup)
         self._timer.start()
 
     def _timely_followup(self):
+        """
+        Executed when enough time has passed since the last update, and a new update is required.
+        """
         with self._lock:
             if self._status == Status.active:  # Just in case the lock's acquired just after pause
                 self._working_time += FOLLOWUP_TIME
-                self._post_message(REQUEST_FOR_UPDATE)
+                self._slack_message(REQUEST_FOR_UPDATE)
                 self._initiate_followup()
 
     @_command
     def help(self):
-        self._post_message(HELP_MESSAGE)
+        self._slack_message(HELP_MESSAGE)
 
     @_allowed_status(Status.logged_out)
     @_command
@@ -149,14 +167,14 @@ class User:
         self._log_file = open(self._log_file_path, 'a', encoding="UTF-8")
         self._status = Status.active
         self._working_time = timedelta()
-        self._post_message(MORNING_MESSAGE)
+        self._slack_message(MORNING_MESSAGE)
         self._log("Logged in")
         self._initiate_followup()
 
     @_allowed_status(Status.active)
     @_command
     def update(self, content):
-        self._post_message(UPDATE_MESSAGE)
+        self._slack_message(UPDATE_MESSAGE)
         self._log("Work update: " + content.replace("\n", "\n\t"))
         self._updates.append(content)
         self._timer.cancel()
@@ -169,22 +187,22 @@ class User:
         self._status = Status.paused
         self._pause_time = datetime.now()
         self._timer.cancel()
-        self._post_message(PAUSE_MESSAGE)
+        self._slack_message(PAUSE_MESSAGE)
         self._log("Paused for break")
 
     @_allowed_status(Status.paused)
     @_command
     def resume(self):
         self._status = Status.active
-        self._initiate_followup(self._pause_time-self._timer_start_time)
-        self._post_message(RESUME_MESSAGE)
+        self._initiate_followup(self._pause_time - self._timer_start_time)
+        self._slack_message(RESUME_MESSAGE)
         self._log("Resumed working")
 
     @_allowed_status(Status.active, Status.paused)
     @_command
     def logout(self):
         self._working_time += datetime.now() - self._timer_start_time
-        self._post_message(LOGOUT_MESSAGE)
+        self._slack_message(LOGOUT_MESSAGE)
         self._log("Logged out")
         self._status = Status.logged_out
         self._log_file.close()
@@ -192,24 +210,25 @@ class User:
         self._relay_stats()
 
     def _relay_stats(self):
-        working_seconds = int(self._working_time.total_seconds())
+        """
+        Sends a file mentioning session information to the user and the admins
+        """
         tasks = "\n".join(map(lambda x: " => " + x.replace("\n", "\n    "), self._updates))
-        message = STATS_MESSAGE\
-            .replace("%date", str(datetime.now().date()))\
-            .replace("%time_worked", str(working_seconds//3600) + " hours "
-                     + str(working_seconds//60 % 60) + " minutes")\
+        message = STATS_MESSAGE \
+            .replace("%date", str(datetime.now().date())) \
+            .replace("%time_worked", str(self._working_time)[:-3] + " hours") \
             .replace("%tasks", tasks)
 
         slack_client.api_call("files.upload",
-                              channels=",".join(ADMINS.union(['@'+self.name])),
+                              channels=",".join(ADMINS.union(['@' + self.name])),
                               content=message,
                               filename=self.name + "_stats.txt")
 
     def handle_command(self, user_input):
         """
-            Receives commands directed at the bot and determines if they
-            are valid commands. If so, then acts on the commands. If not,
-            returns back what it needs for clarification.
+        Receives commands directed at the bot and determines if they
+        are valid commands. If so, then acts on the commands. If not,
+        returns back what it needs for clarification.
         """
         tokens = user_input.split(None, 1)
         if tokens:
@@ -218,7 +237,10 @@ class User:
                 if callable(func) and func.__dict__['command']:
                     func(*tokens[1:])
                 else:
-                    self._post_message(INVALID_INPUT)
+                    self._slack_message(INVALID_INPUT)
+
+    del _command
+    del _allowed_status
 
 
 def parse_slack_output(output_list):
@@ -234,18 +256,15 @@ def parse_slack_output(output_list):
     return None, None
 
 
-def try_slack_connect(delay):
-    """
-    Keeps trying to connect to slack, with given delay between retries.
-    """
+def slack_connect(retry_delay):
     while not slack_client.rtm_connect():
         print("Unable to connect. Retrying...")
-        time.sleep(delay)
+        time.sleep(retry_delay)
     print("StarterBot connected and running!")
 
 
-def save_and_quit(signal, frame):
-    # TODO - Find out why SIGINT is required twice
+def save_and_quit(_, __):
+    # TODO - Find out why SIGINT is required twice sometimes
     pickle.dump(users, open(STATUS_FILE, "wb"), pickle.HIGHEST_PROTOCOL)
     sys.exit()
 
@@ -268,13 +287,13 @@ if __name__ == "__main__":
     load_users()
     signal.signal(signal.SIGINT, save_and_quit)
 
-    try_slack_connect(1)
+    slack_connect(1)
     while True:
         try:
             uid, command = parse_slack_output(slack_client.rtm_read())
             if uid in users:
                 users[uid].handle_command(command)
-            time.sleep(1)  # 1 second delay between reading from firehose
+            time.sleep(1)
         except WebSocketConnectionClosedException:
             print("Connection to Slack closed. Reconnecting...")
-            try_slack_connect(1)
+            slack_connect(1)
