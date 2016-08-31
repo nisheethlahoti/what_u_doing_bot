@@ -211,7 +211,7 @@ class User:
         tasks = "\n".join(map(lambda x: " => " + x.replace("\n", "\n    "), self._updates))
         message = STATS_MESSAGE \
             .replace("%date", str(datetime.now().date())) \
-            .replace("%time_worked", str(self._working_time)[:-3] + " hours") \
+            .replace("%time_worked", str(self._working_time)[:-10] + " hours") \
             .replace("%tasks", tasks)
 
         slack_client.api_call("files.upload",
