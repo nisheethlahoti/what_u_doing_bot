@@ -87,14 +87,16 @@ class User:
         one_argument_fn.__dict__['command'] = True
         return one_argument_fn
 
+    def _initiate_followup(self, elapsed_time=0):
+        self._timer_start_time = datetime.now()
+        self._timer = Timer(FOLLOWUP_TIME-elapsed_time, self._timely_followup)
+        self._timer.start()
+
     def _timely_followup(self):
         with self._lock:
             if self._status == Status.active:  # Just in case the lock's acquired just after pause
-                if self._timer is not None:  # It will be None only during reset calls
-                    self._post_message(REQUEST_FOR_UPDATE)
-                self._timer_start_time = datetime.now()
-                self._timer = Timer(FOLLOWUP_TIME, self._timely_followup)
-                self._timer.start()
+                self._post_message(REQUEST_FOR_UPDATE)
+                self._initiate_followup()
 
     @_allowed_status(Status.logged_out)
     @_command
@@ -103,7 +105,7 @@ class User:
         self._status = Status.active
         self._post_message(MORNING_MESSAGE)
         self._log("Logged in")
-        Timer(0, self._timely_followup).start()
+        self._initiate_followup()
 
     @_allowed_status(Status.active)
     @_command
@@ -111,8 +113,7 @@ class User:
         self._post_message(UPDATE_MESSAGE)
         self._log("Work update: " + content.replace("\n", "\n\t"))
         self._timer.cancel()
-        self._timer = None
-        Timer(0, self._timely_followup).start()
+        self._initiate_followup()
 
     @_allowed_status(Status.active)
     @_command
@@ -127,12 +128,9 @@ class User:
     @_command
     def resume(self):
         self._status = Status.active
-        timer_done = (self._pause_time-self._timer_start_time).total_seconds()
-        self._timer = Timer(FOLLOWUP_TIME-timer_done, self._timely_followup)
-        self._timer_start_time = datetime.now()
+        self._initiate_followup((self._pause_time-self._timer_start_time).total_seconds())
         self._post_message(RESUME_MESSAGE)
         self._log("Resumed working")
-        self._timer.start()
 
     @_allowed_status(Status.active, Status.paused)
     @_command
