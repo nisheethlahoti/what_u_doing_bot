@@ -18,7 +18,7 @@ args = parser.parse_args()
 
 # Globals
 BOT_ID = args.bot_id
-FOLLOWUP_TIME = 3600    # Time (in seconds) to wait before follow-up
+FOLLOWUP_TIME = timedelta(hours=1)  # Time to wait before follow-up
 STATUS_FILE = "status.bin"  # Contains the statuses of current users when bot reboots
 users = {}              # Map of user id's to User objects
 slack_client = SlackClient(args.slack_token)
@@ -82,7 +82,7 @@ class User:
         if self._status is not Status.logged_out:
             self._log_file = open(self._log_file_path, 'a', encoding="UTF-8")
             if self._status is Status.active:
-                self._initiate_followup((datetime.now()-self._timer_start_time).total_seconds())
+                self._initiate_followup(datetime.now()-self._timer_start_time)
 
     def _log(self, message):
         self._log_file.write(str(datetime.now())[:-7] + ": " + message + '\n')
@@ -115,11 +115,11 @@ class User:
         one_argument_fn.__dict__['command'] = True
         return one_argument_fn
 
-    def _initiate_followup(self, elapsed_time=0):
-        # timer_start_time denotes the *apparent* start time: FOLLOWUP_TIME seconds before whenever
+    def _initiate_followup(self, elapsed_time=timedelta()):
+        # timer_start_time denotes the *apparent* start time: FOLLOWUP_TIME before whenever
         # the timer is actually supposed to fire
-        self._timer_start_time = datetime.now() - timedelta(seconds=elapsed_time)
-        self._timer = Timer(FOLLOWUP_TIME-elapsed_time, self._timely_followup)
+        self._timer_start_time = datetime.now() - elapsed_time
+        self._timer = Timer((FOLLOWUP_TIME-elapsed_time).total_seconds(), self._timely_followup)
         self._timer.start()
 
     def _timely_followup(self):
@@ -162,7 +162,7 @@ class User:
     @_command
     def resume(self):
         self._status = Status.active
-        self._initiate_followup((self._pause_time-self._timer_start_time).total_seconds())
+        self._initiate_followup(self._pause_time-self._timer_start_time)
         self._post_message(RESUME_MESSAGE)
         self._log("Resumed working")
 
