@@ -56,6 +56,20 @@ class User:
         self._log_file = None
         self._log_file_path = "logs/" + self.name + ".log"
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        for attr in ['_timer', '_lock', '_log_file']:
+            state[attr] = None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__ = state.copy()
+        self._lock = Lock()
+        if self._status is not Status.logged_out:
+            self._log_file = open(self._log_file_path, 'a', encoding="UTF-8")
+            if self._status is Status.active:
+                self._initiate_followup((datetime.now()-self._timer_start_time).total_seconds())
+
     def _log(self, message):
         self._log_file.write(str(datetime.now())[:-7] + ": " + message + '\n')
         self._log_file.flush()
