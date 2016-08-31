@@ -178,6 +178,7 @@ def try_slack_connect(delay):
         time.sleep(delay)
     print("StarterBot connected and running!")
 
+
 if __name__ == "__main__":
     users = {}
     for user_data in slack_client.api_call("users.list")['members']:
