@@ -81,6 +81,10 @@ class User:
         self._working_time = None
         self._updates = None
 
+    @property
+    def status(self):
+        return self._status
+
     def __getstate__(self):
         state = self.__dict__.copy()
         state['_timer'], state['_lock'] = None, None
@@ -93,9 +97,8 @@ class User:
             self._initiate_followup(datetime.now() - self._timer_start_time)
 
     def _log(self, message):
-        log_file = open(self._log_file_path, 'a', encoding="UTF-8")
-        log_file.write(str(datetime.now())[:-7] + ": " + message + '\n')
-        log_file.close()
+        with open(self._log_file_path, 'a', encoding="UTF-8") as log_file:
+            log_file.write(str(datetime.now())[:-7] + ": " + message + '\n')
 
     def _slack_message(self, message):
         slack_client.api_call("chat.postMessage", channel=self.id, text=message, as_user=True)
@@ -261,24 +264,26 @@ def slack_connect(retry_delay):
 
 def save_and_quit(_, __):
     # TODO - Find out why SIGINT is required twice sometimes
-    pickle.dump(users, open(STATUS_FILE, "wb"), pickle.HIGHEST_PROTOCOL)
+    for user in users.values():
+        if user.status is not Status.logged_out:
+            with open("status/" + user.id + ".bin", "wb") as status_file:
+                pickle.dump(user, status_file, pickle.HIGHEST_PROTOCOL)
     sys.exit()
 
 
 def load_users():
-    global users
-    try:
-        status_file = open(STATUS_FILE, "rb")
-        users = pickle.load(status_file)
-        status_file.close()
-        print("Restored state information of users")
-    except (FileNotFoundError, IOError, EOFError):
-        users = {}
-        for user_data in slack_client.api_call("users.list")['members']:
-            users[user_data['id']] = User(user_data)
-        print("Reset all user data")
-    finally:
-        os.remove(STATUS_FILE)
+    for user_data in slack_client.api_call("users.list")['members']:
+        user_id = user_data['id']
+        try:
+            with open("status/" + user_id + ".bin", "rb") as status_file:
+                users[user_id] = pickle.load(status_file)
+                print("Restored session information of " + user_data['name'])
+        except (FileNotFoundError, IOError, EOFError):
+            users[user_id] = User(user_data)
+            print("Reset session for " + user_data['name'])
+
+    for filename in os.listdir("status"):
+        os.remove("status/" + filename)
 
 
 if __name__ == "__main__":
