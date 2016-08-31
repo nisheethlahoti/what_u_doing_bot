@@ -1,5 +1,6 @@
 import functools
 import inspect
+import os
 import pickle
 import signal
 import sys
@@ -276,6 +277,8 @@ def load_users():
         for user_data in slack_client.api_call("users.list")['members']:
             users[user_data['id']] = User(user_data)
         print("Reset all user data")
+    finally:
+        os.remove(STATUS_FILE)
 
 
 if __name__ == "__main__":
