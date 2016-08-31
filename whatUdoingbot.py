@@ -18,6 +18,10 @@ MORNING_MESSAGE = "Good morning. Let's start creating awesome sound experiences.
 REQUEST_FOR_UPDATE = "Hey, just checking up. Can you let me know what have you been doing?"
 INVALID_INPUT = "Not sure what you mean. Type help to get possible commands"
 NO_ACCEPT_ARGUMENTS = "Don't understand this command if followed by further text :/"
+UPDATE_MESSAGE = "Thanks for the update!"
+PAUSE_MESSAGE = "All right, time for a break. Do remember to inform me when you return!"
+RESUME_MESSAGE = "Hello again!"
+LOGOUT_MESSAGE = "Bye bye!"
 
 # instantiate Slack & Twilio clients
 slack_client = SlackClient("")  # TODO: Should have the slack token
@@ -49,12 +53,11 @@ class User:
         self._log_file = None
 
     def _log(self, message):
-        self._log_file.write(message + '\n')
+        self._log_file.write(str(datetime.now())[:-7] + ": " + message + '\n')
         self._log_file.flush()
 
     def _post_message(self, message):
-        slack_client.api_call("chat.postMessage", channel=self.id,
-                              text=message, as_user=True)
+        slack_client.api_call("chat.postMessage", channel=self.id, text=message, as_user=True)
 
     def _allowed_status(*statuses):
         def with_fn(func):
@@ -95,13 +98,14 @@ class User:
         self._log_file = open("logs/" + self.name + ".log", 'a', encoding="UTF-8")
         self._status = Status.active
         self._post_message(MORNING_MESSAGE)
-        self._log("Login time of " + self.name + " is " + str(datetime.now()))
+        self._log("Logged in")
         Timer(0, self._timely_followup).start()
 
     @_allowed_status(Status.active)
     @_command
     def update(self, content):
-        self._log("Work Update from " + self.name + " is:" + content.replace("\n", "\n\t"))
+        self._post_message(UPDATE_MESSAGE)
+        self._log("Work update: " + content.replace("\n", "\n\t"))
         self._timer.cancel()
         self._timer = None
         Timer(0, self._timely_followup).start()
@@ -112,7 +116,8 @@ class User:
         self._status = Status.paused
         self._pause_time = datetime.now()
         self._timer.cancel()
-        self._log(self.name + " has paused work at " + str(self._pause_time))
+        self._post_message(PAUSE_MESSAGE)
+        self._log("Paused for break")
 
     @_allowed_status(Status.paused)
     @_command
@@ -121,13 +126,15 @@ class User:
         timer_done = (self._pause_time-self._timer_start_time).total_seconds()
         self._timer = Timer(FOLLOWUP_TIME-timer_done, self._timely_followup)
         self._timer_start_time = datetime.now()
-        self._log(self.name + " has resumed work at " + str(self._timer_start_time))
+        self._post_message(RESUME_MESSAGE)
+        self._log("Resumed working")
         self._timer.start()
 
     @_allowed_status(Status.active, Status.paused)
     @_command
     def logout(self):
-        self._log("Logout time of " + self.name + " is " + str(datetime.now()))
+        self._post_message(LOGOUT_MESSAGE)
+        self._log("Logged out")
         self._status = Status.logged_out
         self._log_file.close()
         if self._timer:
