@@ -76,28 +76,25 @@ class User:
         self._timer = None
         self._pause_time = None
         self._lock = Lock()
-        self._log_file = None
         self._log_file_path = "logs/" + self.name + ".log"
         self._working_time = None
         self._updates = None
 
     def __getstate__(self):
         state = self.__dict__.copy()
-        for attr in ['_timer', '_lock', '_log_file']:
-            state[attr] = None
+        state['_timer'], state['_lock'] = None, None
         return state
 
     def __setstate__(self, state):
         self.__dict__ = state.copy()
         self._lock = Lock()
-        if self._status is not Status.logged_out:
-            self._log_file = open(self._log_file_path, 'a', encoding="UTF-8")
-            if self._status is Status.active:
-                self._initiate_followup(datetime.now() - self._timer_start_time)
+        if self._status is Status.active:
+            self._initiate_followup(datetime.now() - self._timer_start_time)
 
     def _log(self, message):
-        self._log_file.write(str(datetime.now())[:-7] + ": " + message + '\n')
-        self._log_file.flush()
+        log_file = open(self._log_file_path, 'a', encoding="UTF-8")
+        log_file.write(str(datetime.now())[:-7] + ": " + message + '\n')
+        log_file.close()
 
     def _slack_message(self, message):
         slack_client.api_call("chat.postMessage", channel=self.id, text=message, as_user=True)
@@ -164,7 +161,6 @@ class User:
     @_command
     def login(self):
         self._updates = []
-        self._log_file = open(self._log_file_path, 'a', encoding="UTF-8")
         self._status = Status.active
         self._working_time = timedelta()
         self._slack_message(MORNING_MESSAGE)
@@ -205,7 +201,6 @@ class User:
         self._slack_message(LOGOUT_MESSAGE)
         self._log("Logged out")
         self._status = Status.logged_out
-        self._log_file.close()
         self._timer.cancel()
         self._relay_stats()
 
