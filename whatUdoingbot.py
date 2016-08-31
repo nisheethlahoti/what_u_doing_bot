@@ -33,6 +33,18 @@ PAUSE_MESSAGE = "All right, time for a break. Do remember to inform me when you 
 RESUME_MESSAGE = "Hello again!"
 LOGOUT_MESSAGE = "Bye bye!"
 
+HELP_STRING = u"I'm _what_u_doing_, a bot to help you log your hourly tasks." \
+    " Here are the commands that I understand for now:\n\n" \
+    "*login* - Type this when you start your work day\n\n" \
+    "*pause* - Want to take a break?" \
+    " Type pause to ensure that the bot doesn't keep pestering you.\n\n" \
+    "*resume* - Type this when you again start working after a pause." \
+    " You should do this immediately after your break is over.\n\n" \
+    "*update* - This is the main command. Whenever you want to share an update," \
+    " write `update xyz`, where xyz is the work that you did since the last update.\n\n" \
+    "*logout* - Done for the day? Just type logout to tell the bot!\n\n" \
+    "For any queries or suggestions, reach out to what_u_doing_bot@soundrex.com ASAP."
+
 
 class Status(Enum):
     active = 0
@@ -47,7 +59,6 @@ mismatch_message = {
 
 
 class User:
-    # TODO - Implement help function
     def __init__(self, data):
         self.id = data['id']
         self.name = data['name']
@@ -116,6 +127,10 @@ class User:
             if self._status == Status.active:  # Just in case the lock's acquired just after pause
                 self._post_message(REQUEST_FOR_UPDATE)
                 self._initiate_followup()
+
+    @_command
+    def help(self):
+        self._post_message(HELP_STRING)
 
     @_allowed_status(Status.logged_out)
     @_command
