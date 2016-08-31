@@ -33,7 +33,7 @@ PAUSE_MESSAGE = "All right, time for a break. Do remember to inform me when you 
 RESUME_MESSAGE = "Hello again!"
 LOGOUT_MESSAGE = "Bye bye!"
 
-HELP_STRING = u"I'm _what_u_doing_, a bot to help you log your hourly tasks." \
+HELP_MESSAGE = u"I'm _what_u_doing_, a bot to help you log your hourly tasks." \
     " Here are the commands that I understand for now:\n\n" \
     "*login* - Type this when you start your work day\n\n" \
     "*pause* - Want to take a break?" \
@@ -69,6 +69,8 @@ class User:
         self._lock = Lock()
         self._log_file = None
         self._log_file_path = "logs/" + self.name + ".log"
+        self._working_time = None
+        self._updates = None
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -125,18 +127,21 @@ class User:
     def _timely_followup(self):
         with self._lock:
             if self._status == Status.active:  # Just in case the lock's acquired just after pause
+                self._working_time += FOLLOWUP_TIME
                 self._post_message(REQUEST_FOR_UPDATE)
                 self._initiate_followup()
 
     @_command
     def help(self):
-        self._post_message(HELP_STRING)
+        self._post_message(HELP_MESSAGE)
 
     @_allowed_status(Status.logged_out)
     @_command
     def login(self):
+        self._updates = []
         self._log_file = open(self._log_file_path, 'a', encoding="UTF-8")
         self._status = Status.active
+        self._working_time = timedelta()
         self._post_message(MORNING_MESSAGE)
         self._log("Logged in")
         self._initiate_followup()
@@ -146,7 +151,9 @@ class User:
     def update(self, content):
         self._post_message(UPDATE_MESSAGE)
         self._log("Work update: " + content.replace("\n", "\n\t"))
+        self._updates.append(content)
         self._timer.cancel()
+        self._working_time += datetime.now() - self._timer_start_time
         self._initiate_followup()
 
     @_allowed_status(Status.active)
@@ -169,12 +176,12 @@ class User:
     @_allowed_status(Status.active, Status.paused)
     @_command
     def logout(self):
+        self._working_time += datetime.now() - self._timer_start_time
         self._post_message(LOGOUT_MESSAGE)
         self._log("Logged out")
         self._status = Status.logged_out
         self._log_file.close()
-        if self._timer:
-            self._timer.cancel()
+        self._timer.cancel()
 
     def handle_command(self, user_input):
         """
