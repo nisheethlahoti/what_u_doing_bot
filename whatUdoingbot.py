@@ -22,7 +22,6 @@ args = parser.parse_args()
 # Globals
 BOT_ID = args.bot_id
 FOLLOWUP_TIME = timedelta(hours=1)      # Time to wait before follow-up
-STATUS_FILE = "status.bin"              # Contains the statuses of current users when bot reboots
 users = {}                              # Map of user id's to User objects
 slack_client = SlackClient(args.slack_token)
 ADMINS = set(args.admins)
@@ -93,6 +92,7 @@ class User:
     def __setstate__(self, state):
         self.__dict__ = state.copy()
         self._lock = Lock()
+        self._timer = Timer(0, lambda: None)    # Just so it has a non-null value
         if self._status is Status.active:
             self._initiate_followup(datetime.now() - self._timer_start_time)
 
