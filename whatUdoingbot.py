@@ -1,17 +1,23 @@
 import inspect
 import time
 
+from argparse import ArgumentParser
 from datetime import datetime
 from enum import Enum
 from slackclient import SlackClient
 from threading import Lock, Timer
 from websocket import WebSocketConnectionClosedException
 
-# our bot's ID
-BOT_ID = ""  # TODO: Should be the bot's UID
+parser = ArgumentParser(description='Bot to measure work time of team members')
+parser.add_argument('bot_id', help='Slack UID of bot')
+parser.add_argument('slack_token', help='Slack token (xoxs-...)')
+args = parser.parse_args()
 
-# constants
-FOLLOWUP_TIME = 3600
+# Globals
+BOT_ID = args.bot_id
+FOLLOWUP_TIME = 3600    # Time (in seconds) to wait before follow-up
+users = {}              # Map of user id's to User objects
+slack_client = SlackClient(args.slack_token)
 
 # String
 MORNING_MESSAGE = "Good morning. Let's start creating awesome sound experiences. Have a great day!"
@@ -22,9 +28,6 @@ UPDATE_MESSAGE = "Thanks for the update!"
 PAUSE_MESSAGE = "All right, time for a break. Do remember to inform me when you return!"
 RESUME_MESSAGE = "Hello again!"
 LOGOUT_MESSAGE = "Bye bye!"
-
-# instantiate Slack & Twilio clients
-slack_client = SlackClient("")  # TODO: Should have the slack token
 
 
 class Status(Enum):
@@ -51,6 +54,7 @@ class User:
         self._pause_time = None
         self._lock = Lock()
         self._log_file = None
+        self._log_file_path = "logs/" + self.name + ".log"
 
     def _log(self, message):
         self._log_file.write(str(datetime.now())[:-7] + ": " + message + '\n')
@@ -95,7 +99,7 @@ class User:
     @_allowed_status(Status.logged_out)
     @_command
     def login(self):
-        self._log_file = open("logs/" + self.name + ".log", 'a', encoding="UTF-8")
+        self._log_file = open(self._log_file_path, 'a', encoding="UTF-8")
         self._status = Status.active
         self._post_message(MORNING_MESSAGE)
         self._log("Logged in")
@@ -180,7 +184,6 @@ def try_slack_connect(delay):
 
 
 if __name__ == "__main__":
-    users = {}
     for user_data in slack_client.api_call("users.list")['members']:
         users[user_data['id']] = User(user_data)
 
