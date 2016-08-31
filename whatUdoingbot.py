@@ -14,6 +14,7 @@ from websocket import WebSocketConnectionClosedException
 parser = ArgumentParser(description='Bot to measure work time of team members')
 parser.add_argument('bot_id', help='Slack UID of bot')
 parser.add_argument('slack_token', help='Slack token (xoxs-...)')
+parser.add_argument('admins', nargs='*', help="The people who receive everyone's daily report")
 args = parser.parse_args()
 
 # Globals
@@ -22,6 +23,7 @@ FOLLOWUP_TIME = timedelta(hours=1)  # Time to wait before follow-up
 STATUS_FILE = "status.bin"  # Contains the statuses of current users when bot reboots
 users = {}              # Map of user id's to User objects
 slack_client = SlackClient(args.slack_token)
+ADMINS = set(args.admins)
 
 # String
 MORNING_MESSAGE = "Good morning. Let's start creating awesome sound experiences. Have a great day!"
@@ -44,6 +46,11 @@ HELP_MESSAGE = u"I'm _what_u_doing_, a bot to help you log your hourly tasks." \
     " write `update xyz`, where xyz is the work that you did since the last update.\n\n" \
     "*logout* - Done for the day? Just type logout to tell the bot!\n\n" \
     "For any queries or suggestions, reach out to what_u_doing_bot@soundrex.com ASAP."
+
+STATS_MESSAGE = u"Your Work Update for %date:\n\n" \
+    "Today you worked for %time_worked. Here's what you did in that time:\n" \
+    "%tasks\n\n" \
+    "Cheers!"
 
 
 class Status(Enum):
@@ -182,6 +189,21 @@ class User:
         self._status = Status.logged_out
         self._log_file.close()
         self._timer.cancel()
+        self._relay_stats()
+
+    def _relay_stats(self):
+        working_seconds = int(self._working_time.total_seconds())
+        tasks = "\n".join(map(lambda x: " => " + x.replace("\n", "\n    "), self._updates))
+        message = STATS_MESSAGE\
+            .replace("%date", str(datetime.now().date()))\
+            .replace("%time_worked", str(working_seconds//3600) + " hours "
+                     + str(working_seconds//60 % 60) + " minutes")\
+            .replace("%tasks", tasks)
+
+        slack_client.api_call("files.upload",
+                              channels=",".join(ADMINS.union(['@'+self.name])),
+                              content=message,
+                              filename=self.name + "_stats.txt")
 
     def handle_command(self, user_input):
         """
