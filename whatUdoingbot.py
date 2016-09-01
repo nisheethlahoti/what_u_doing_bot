@@ -201,7 +201,8 @@ class User:
     @_allowed_status(Status.active, Status.paused)
     @_command
     def logout(self):
-        self._working_time += datetime.now() - self._timer_start_time
+        final_time = datetime.now() if self._status is Status.active else self._pause_time
+        self._working_time += final_time - self._timer_start_time
         self._slack_message(LOGOUT_MESSAGE)
         self._log("Logged out")
         self._status = Status.logged_out
