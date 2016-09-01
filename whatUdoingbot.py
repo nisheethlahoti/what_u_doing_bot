@@ -263,6 +263,9 @@ def slack_connect(retry_delay):
 
 
 def save_and_quit(_, __):
+    """
+    Saves the state of each logged-in user in status/user_id.bin and quits the program
+    """
     # TODO - Find out why SIGINT is required twice sometimes
     for user in users.values():
         if user.status is not Status.logged_out:
@@ -272,6 +275,10 @@ def save_and_quit(_, __):
 
 
 def load_users():
+    """
+    Loads state corresponding to each file in 'status/' folder, and starts new session for each file
+    not present in it. Deletes all files in the 'status/' folder before quitting.
+    """
     for user_data in slack_client.api_call("users.list")['members']:
         user_id = user_data['id']
         try:
