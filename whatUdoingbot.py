@@ -280,14 +280,15 @@ def load_users():
     not present in it. Deletes all files in the 'status/' folder before quitting.
     """
     for user_data in slack_client.api_call("users.list")['members']:
-        user_id = user_data['id']
-        try:
-            with open("status/" + user_id + ".bin", "rb") as status_file:
-                users[user_id] = pickle.load(status_file)
-                print("Restored session information of " + user_data['name'])
-        except (FileNotFoundError, IOError, EOFError):
-            users[user_id] = User(user_data)
-            print("Reset session for " + user_data['name'])
+        if not user_data['deleted']:
+            user_id = user_data['id']
+            try:
+                with open("status/" + user_id + ".bin", "rb") as status_file:
+                    users[user_id] = pickle.load(status_file)
+                    print("Restored session information of " + user_data['name'])
+            except (FileNotFoundError, IOError, EOFError):
+                users[user_id] = User(user_data)
+                print("Reset session for " + user_data['name'])
 
     for filename in os.listdir("status"):
         os.remove("status/" + filename)
