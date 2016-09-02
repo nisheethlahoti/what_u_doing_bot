@@ -1,5 +1,4 @@
 import functools
-import inspect
 import os
 import pickle
 import signal
@@ -30,7 +29,7 @@ ADMINS = set(args.admins)
 MORNING_MESSAGE = "Good morning. Let's start creating awesome sound experiences. Have a great day!"
 REQUEST_FOR_UPDATE = "Hey, just checking up. Can you let me know what have you been doing?"
 INVALID_INPUT = "Not sure what you mean. Type help to get possible commands"
-NO_ACCEPT_ARGUMENTS = "Don't understand this command if followed by further text :/"
+WRONG_ARGUMENTS = "Sorry, wrong further input for this command :/"
 UPDATE_MESSAGE = "Thanks for the update!"
 PAUSE_MESSAGE = "All right, time for a break. Do remember to inform me when you return!"
 RESUME_MESSAGE = "Hello again!"
@@ -103,38 +102,25 @@ class User:
     def _slack_message(self, message):
         slack_client.api_call("chat.postMessage", channel=self.id, text=message, as_user=True)
 
-    def _allowed_status(*statuses):
+    def _command(*statuses):
         """
-        Decorator that only lets the function execute if the current status in the list provided.
+        Decorator to mark a method as callable by the end user
+        :param statuses: The list of possible user states when calling the command is allowed
         """
         def with_fn(func):
             @functools.wraps(func)
             def with_args(self, *args):
                 if self._status in statuses:
-                    func(self, *args)
+                    try:
+                        func(self, *args)
+                    except TypeError:
+                        self._slack_message(WRONG_ARGUMENTS)
                 else:
                     self._slack_message(mismatch_message[self._status])
+
+            with_args.is_command = True   # is_command should only be present for commands
             return with_args
-
         return with_fn
-
-    def _command(func):
-        """
-        Decorator to mark a method as callable by the end user
-        """
-        num_params = len(inspect.signature(func).parameters) - 1
-
-        @functools.wraps(func)
-        def one_argument_fn(self, *args):  # args and num_params can both only be 0 or 1
-            if len(args) == num_params:
-                func(self, *args)
-            elif args:
-                self._slack_message(NO_ACCEPT_ARGUMENTS)
-            elif num_params:
-                func(self, "")
-
-        one_argument_fn.is_command = None   # is_command should only be present for commands
-        return one_argument_fn
 
     def _initiate_followup(self, elapsed_time=timedelta()):
         """
@@ -157,12 +143,11 @@ class User:
                 self._slack_message(REQUEST_FOR_UPDATE)
                 self._initiate_followup()
 
-    @_command
+    @_command(*Status)  # Allow for all values of Status
     def help(self):
         self._slack_message(HELP_MESSAGE)
 
-    @_allowed_status(Status.logged_out)
-    @_command
+    @_command(Status.logged_out)
     def login(self):
         self._updates = []
         self._status = Status.active
@@ -171,8 +156,7 @@ class User:
         self._log("Logged in")
         self._initiate_followup()
 
-    @_allowed_status(Status.active)
-    @_command
+    @_command(Status.active)
     def update(self, content):
         self._slack_message(UPDATE_MESSAGE)
         self._log("Work update: " + content.replace("\n", "\n\t"))
@@ -181,8 +165,7 @@ class User:
         self._working_time += datetime.now() - self._timer_start_time
         self._initiate_followup()
 
-    @_allowed_status(Status.active)
-    @_command
+    @_command(Status.active)
     def pause(self):
         self._status = Status.paused
         self._pause_time = datetime.now()
@@ -190,16 +173,14 @@ class User:
         self._slack_message(PAUSE_MESSAGE)
         self._log("Paused for break")
 
-    @_allowed_status(Status.paused)
-    @_command
+    @_command(Status.paused)
     def resume(self):
         self._status = Status.active
         self._initiate_followup(self._pause_time - self._timer_start_time)
         self._slack_message(RESUME_MESSAGE)
         self._log("Resumed working")
 
-    @_allowed_status(Status.active, Status.paused)
-    @_command
+    @_command(Status.active, Status.paused)
     def logout(self):
         final_time = datetime.now() if self._status is Status.active else self._pause_time
         self._working_time += final_time - self._timer_start_time
@@ -226,9 +207,8 @@ class User:
 
     def handle_command(self, user_input):
         """
-        Receives commands directed at the bot and determines if they
-        are valid commands. If so, then acts on the commands. If not,
-        returns back what it needs for clarification.
+        Receives a command directed at the bot and determines if it is valid. If so, acts on it.
+        If not, returns back what it needs for clarification.
         """
         tokens = user_input.split(None, 1)
         if tokens:
@@ -240,7 +220,6 @@ class User:
                     self._slack_message(INVALID_INPUT)
 
     del _command
-    del _allowed_status
 
 
 def parse_slack_output(output_list):
