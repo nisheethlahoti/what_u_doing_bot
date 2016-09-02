@@ -222,17 +222,17 @@ class User:
     del _command
 
 
-def parse_slack_output(output_list):
+def parse_slack_output(json_list):
     """
     Parses slack output to extract all messages not sent by the bot itself
-    :param output_list: A list of json objects for slack messages
-    :return: The ID of the user sending the message, and the text of the message
+    :param json_list: A list of json objects for slack messages
+    :return: A list of pairs of the ID of the user sending the message, and the text of the message
     """
-    if output_list and len(output_list) > 0:
-        for output in output_list:
-            if output and 'text' in output and 'user' in output and output['user'] != BOT_ID:
-                return output['user'], output['text']
-    return None, None
+    message_pairs = []
+    for json in json_list:
+        if json and 'text' in json and 'user' in json and json['user'] != BOT_ID:
+            message_pairs.append((json['user'], json['text']))
+    return message_pairs
 
 
 def slack_connect(retry_delay):
@@ -281,10 +281,9 @@ if __name__ == "__main__":
     slack_connect(1)
     while True:
         try:
-            uid, command = parse_slack_output(slack_client.rtm_read())
-            if uid in users:
+            for uid, command in parse_slack_output(slack_client.rtm_read()):
                 users[uid].handle_command(command)
-            time.sleep(1)
+            time.sleep(0.5)
         except WebSocketConnectionClosedException:
             print("Connection to Slack closed. Reconnecting...")
             slack_connect(1)
