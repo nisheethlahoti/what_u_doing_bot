@@ -23,7 +23,7 @@ BOT_ID = args.bot_id
 FOLLOWUP_TIME = timedelta(hours=1)      # Time to wait before follow-up
 users = {}                              # Map of user id's to User objects
 slack_client = SlackClient(args.slack_token)
-ADMINS = set(args.admins)
+UPDATE_RECEIVERS = set(args.admins)
 
 # String
 MORNING_MESSAGE = "Good morning. Let's start creating awesome sound experiences. Have a great day!"
@@ -97,10 +97,13 @@ class User:
 
     def _log(self, message):
         with open(self._log_file_path, 'a', encoding="UTF-8") as log_file:
-            log_file.write(str(datetime.now())[:-7] + ": " + message + '\n')
+            log_file.write(str(datetime.now())[:-7] + ": " + message.replace("\n", "\n\t") + '\n')
 
     def _slack_message(self, message):
-        slack_client.api_call("chat.postMessage", channel=self.id, text=message, as_user=True)
+        try:
+            slack_client.api_call("chat.postMessage", channel=self.id, text=message, as_user=True)
+        except Exception as e:
+            self._log("[Error Generated]\n" + str(e))
 
     def _command(*statuses):
         """
@@ -159,7 +162,7 @@ class User:
     @_command(Status.active)
     def update(self, content):
         self._slack_message(UPDATE_MESSAGE)
-        self._log("Work update: " + content.replace("\n", "\n\t"))
+        self._log("Work update: " + content)
         self._updates.append(content)
         self._timer.cancel()
         self._working_time += datetime.now() - self._timer_start_time
@@ -201,7 +204,7 @@ class User:
             .replace("%tasks", tasks)
 
         slack_client.api_call("files.upload",
-                              channels=",".join(ADMINS.union(['@' + self.name])),
+                              channels=",".join(UPDATE_RECEIVERS.union(['@' + self.name])),
                               content=message,
                               filename=self.name + "_stats.txt")
 
