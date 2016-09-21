@@ -47,9 +47,9 @@ HELP_MESSAGE = u"I'm _what_u_doing_, a bot to help you log your hourly tasks." \
                "*logout* - Done for the day? Just type logout to tell the bot!\n\n" \
                "For any queries or suggestions, reach out to what_u_doing_bot@soundrex.com ASAP."
 
-STATS_MESSAGE = u"Your Work Update for %date:\n\n" \
-                "Today you worked for %time_worked. Here's what you did in that time:\n" \
-                "%tasks\n\n" \
+STATS_MESSAGE = u"Your Work Update for {date!s}:\n\n" \
+                "Today you worked for {hours!s} hours. Here's what you did in that time:\n" \
+                "{tasks}\n\n" \
                 "Cheers!"
 
 
@@ -110,6 +110,7 @@ class User:
         Decorator to mark a method as callable by the end user
         :param statuses: The list of possible user states when calling the command is allowed
         """
+
         def with_fn(func):
             @functools.wraps(func)
             def with_args(self, *args):
@@ -123,6 +124,7 @@ class User:
 
             with_args.is_command = True   # is_command should only be present for commands
             return with_args
+
         return with_fn
 
     def _initiate_followup(self, elapsed_time=timedelta()):
@@ -198,10 +200,8 @@ class User:
         Sends a file mentioning session information to the user and the admins
         """
         tasks = "\n".join(map(lambda x: " => " + x.replace("\n", "\n    "), self._updates))
-        message = STATS_MESSAGE \
-            .replace("%date", str(datetime.now().date())) \
-            .replace("%time_worked", str(self._working_time)[:-10] + " hours") \
-            .replace("%tasks", tasks)
+        message = STATS_MESSAGE.format(tasks=tasks, date=datetime.now().date(),
+                                       hours=":".join(str(self._working_time).split(":")[:2]))
 
         slack_client.api_call("files.upload",
                               channels=",".join(UPDATE_RECEIVERS.union(['@' + self.name])),
