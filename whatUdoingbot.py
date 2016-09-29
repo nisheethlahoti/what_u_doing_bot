@@ -10,7 +10,6 @@ from datetime import datetime, timedelta
 from enum import Enum
 from slackclient import SlackClient
 from threading import Lock, Timer
-from websocket import WebSocketConnectionClosedException
 
 parser = ArgumentParser(description='Bot to measure work time of team members')
 parser.add_argument('bot_id', help='Slack UID of bot')
@@ -200,12 +199,10 @@ class User:
         Sends a file mentioning session information to the user and the admins
         """
         tasks = "\n".join(map(lambda x: " => " + x.replace("\n", "\n    "), self._updates))
-        message = STATS_MESSAGE.format(tasks=tasks, date=datetime.now().date(),
-                                       hours=":".join(str(self._working_time).split(":")[:2]))
-
         slack_client.api_call("files.upload",
                               channels=",".join(UPDATE_RECEIVERS.union(['@' + self.name])),
-                              content=message,
+                              content=STATS_MESSAGE.format(tasks=tasks, date=datetime.now().date(),
+                                                           hours=str(self._working_time)[:-10]),
                               filename=self.name + "_stats.txt")
 
     def handle_command(self, user_input):
@@ -287,6 +284,7 @@ if __name__ == "__main__":
             for uid, command in parse_slack_output(slack_client.rtm_read()):
                 users[uid].handle_command(command)
             time.sleep(0.5)
-        except WebSocketConnectionClosedException:
+        except Exception as e:
+            print(e)
             print("Connection to Slack closed. Reconnecting...")
             slack_connect(1)
