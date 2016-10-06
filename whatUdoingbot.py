@@ -159,13 +159,13 @@ class User:
         self._status = Status.active
         self._working_time = timedelta()
         self._slack_message(MORNING_MESSAGE)
-        self._log("Logged in")
+        self._log("logged in")
         self._initiate_followup()
 
     @_command(Status.active)
     def update(self, content):
         self._slack_message(UPDATE_MESSAGE)
-        self._log("Work update: " + content)
+        self._log("work update: " + content)
         self._updates.append(content)
         self._timer.cancel()
         self._working_time += datetime.now() - self._timer_start_time
@@ -177,21 +177,21 @@ class User:
         self._pause_time = datetime.now()
         self._timer.cancel()
         self._slack_message(PAUSE_MESSAGE)
-        self._log("Paused for break")
+        self._log("paused for break")
 
     @_command(Status.paused)
     def resume(self):
         self._status = Status.active
         self._initiate_followup(self._pause_time - self._timer_start_time)
         self._slack_message(RESUME_MESSAGE)
-        self._log("Resumed working")
+        self._log("resumed working")
 
     @_command(Status.active, Status.paused)
     def logout(self):
         final_time = datetime.now() if self._status is Status.active else self._pause_time
         self._working_time += final_time - self._timer_start_time
         self._slack_message(LOGOUT_MESSAGE)
-        self._log("Logged out")
+        self._log("logged out")
         self._status = Status.logged_out
         self._timer.cancel()
         self._relay_stats()
