@@ -97,6 +97,8 @@ class User:
     def _log(self, message):
         with open(self._log_file_path, 'a', encoding="UTF-8") as log_file:
             log_file.write(str(datetime.now())[:-7] + ": " + message.replace("\n", "\n\t") + '\n')
+        slack_client.api_call("chat.postMessage", channel='#live_work_updates',
+                              text=self.name + " " + message, as_user=True)
 
     def _slack_message(self, message):
         try:
