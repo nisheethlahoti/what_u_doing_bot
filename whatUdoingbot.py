@@ -196,6 +196,12 @@ class User:
         self._timer.cancel()
         self._relay_stats()
 
+    @_command(Status.active, Status.paused)
+    def get_work_time(self):
+        ending_time = datetime.now() if self._status is Status.active else self._pause_time
+        time_worked = self._working_time + (ending_time - self._timer_start_time)
+        self._slack_message("You have worked for {} hours".format(str(time_worked)[:-10]))
+
     def _relay_stats(self):
         """
         Sends a file mentioning session information to the user and the admins
