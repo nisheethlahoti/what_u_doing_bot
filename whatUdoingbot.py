@@ -44,6 +44,7 @@ HELP_MESSAGE = u"I'm _what_u_doing_, a bot to help you log your hourly tasks." \
                "*update* - This is the main command. Whenever you want to share an update," \
                " write `update xyz`, where xyz is the work you did since the last update.\n\n" \
                "*logout* - Done for the day? Just type logout to tell the bot!\n\n" \
+               "*get_work_time* - Type this if you want to know how long you've already worked for the day.\n\n" \
                "For any queries or suggestions, reach out to what_u_doing_bot@soundrex.com ASAP."
 
 STATS_MESSAGE = u"Your Work Update for {date!s}:\n\n" \
@@ -254,7 +255,6 @@ def save_and_quit(_, __):
     """
     Saves the state of each logged-in user in status/user_id.bin and quits the program
     """
-    # TODO - Find out why SIGINT is required twice sometimes
     for user in users.values():
         if user.status is not Status.logged_out:
             with open("status/" + user.id + ".bin", "wb") as status_file:
