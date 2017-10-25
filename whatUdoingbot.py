@@ -248,7 +248,7 @@ def slack_connect(retry_delay):
     while not slack_client.rtm_connect():
         print("Unable to connect. Retrying...")
         time.sleep(retry_delay)
-    print("StarterBot connected and running!")
+    print("StarterBot connected and running at " + str(datetime.now())[:-7])
 
 
 def save_and_quit(_, __):
@@ -294,5 +294,4 @@ if __name__ == "__main__":
             time.sleep(0.5)
         except Exception as e:
             print(e)
-            print("Connection to Slack closed. Reconnecting...")
             slack_connect(1)
