@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 import functools
 import os
 import pickle
@@ -33,6 +35,7 @@ UPDATE_MESSAGE = "Thanks for the update!"
 PAUSE_MESSAGE = "All right, time for a break. Do remember to inform me when you return!"
 RESUME_MESSAGE = "Hello again!"
 LOGOUT_MESSAGE = "Bye bye!"
+INVALID_STATUS = "Can't do this while you're {}!"
 
 HELP_MESSAGE = u"I'm _what_u_doing_, a bot to help you log your hourly tasks." \
                " Here are the commands that I understand for now:\n\n" \
@@ -44,7 +47,8 @@ HELP_MESSAGE = u"I'm _what_u_doing_, a bot to help you log your hourly tasks." \
                "*update* - This is the main command. Whenever you want to share an update," \
                " write `update xyz`, where xyz is the work you did since the last update.\n\n" \
                "*logout* - Done for the day? Just type logout to tell the bot!\n\n" \
-               "*get_work_time* - Type this if you want to know how long you've already worked for the day.\n\n" \
+               "*get_work_time* - Type this if you want to know how long you've already worked" \
+               " for the day.\n\n" \
                "For any queries or suggestions, reach out to what_u_doing_bot@soundrex.com ASAP."
 
 STATS_MESSAGE = u"Your Work Update for {date!s}:\n\n" \
@@ -57,13 +61,6 @@ class Status(Enum):
     active = 0
     paused = 1
     logged_out = 2
-
-
-mismatch_message = {
-    Status.active: "Can't do this when you're already active!",
-    Status.paused: "Can't do this while on a pause.",
-    Status.logged_out: "Can't do this while logged out."
-}
 
 
 class User:
@@ -122,7 +119,7 @@ class User:
                     except TypeError:
                         self._slack_message(WRONG_ARGUMENTS)
                 else:
-                    self._slack_message(mismatch_message[self._status])
+                    self._slack_message(INVALID_STATUS.format(self._status.name.replace('_', ' ')))
 
             with_args.is_command = True   # is_command should only be present for commands
             return with_args
